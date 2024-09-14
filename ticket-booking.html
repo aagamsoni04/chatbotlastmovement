@@ -1,0 +1,254 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title data-i18n="booking.header">Ticket Booking</title>
+    <link rel="stylesheet" href="ticket.css">
+    <script src="https://checkout.razorpay.com/v1/checkout.js"></script> <!-- Razorpay script -->
+    <script src="https://cdn.jsdelivr.net/npm/pocketbase@latest/dist/pocketbase.min.js"></script> <!-- PocketBase SDK -->
+</head>
+<body>
+    <div class="booking-container">
+        <header class="chat-header">
+            <span data-i18n="booking.header">Ticket Booking</span>
+        </header>
+        <main class="chat-area">
+            <form id="bookingForm">
+                <label for="fullName" data-i18n="booking.fullName">Full Name:</label>
+                <input type="text" id="fullName" required>
+
+                <label for="email" data-i18n="booking.email">Email ID:</label>
+                <input type="email" id="email" required>
+
+                <label for="phoneNumber" data-i18n="booking.phoneNumber">Phone Number:</label>
+                <input type="tel" id="phoneNumber" required>
+
+                <label data-i18n="booking.selectShows">Select Shows:</label>
+                <div class="checkbox-group">
+                    <div class="checkbox-item">
+                        <input type="checkbox" id="TheDinosaurEra" value="1">
+                        <label for="TheDinosaurEra" data-i18n="booking.TheDinosaurEra">The Dinosaur Era: Rebirth of Giants</label>
+                    </div>
+                    <div class="checkbox-item">
+                        <input type="checkbox" id="FossilHunters" value="1">
+                        <label for="FossilHunters" data-i18n="booking.FossilHunters">Fossil Hunters: Uncovering Gujarat's Past</label>
+                    </div>
+                    <div class="checkbox-item">
+                        <input type="checkbox" id="JourneyToExtinction" value="1">
+                        <label for="JourneyToExtinction" data-i18n="booking.JourneyToExtinction">Journey to Extinction: The Cretaceous-Paleogene Event</label>
+                    </div>
+                    <div class="checkbox-item">
+                        <input type="checkbox" id="MarineReptilesOfAncientGujarat" value="1">
+                        <label for="MarineReptilesOfAncientGujarat" data-i18n="booking.MarineReptilesOfAncientGujarat">Marine Reptiles of Ancient Gujarat</label>
+                    </div>
+                    <div class="checkbox-item">
+                        <input type="checkbox" id="TheRajasaurus" value="1">
+                        <label for="TheRajasaurus" data-i18n="booking.TheRajasaurus">The Rajasaurus: Gujarat’s Apex Predator</label>
+                    </div>
+                </div>
+
+                <label data-i18n="booking.adults">Number of Adults:</label>
+                <input type="range" id="adults" min="0" max="50" value="0" oninput="updateLabel('adultsLabel', this.value)">
+                <span id="adultsLabel">0</span>
+
+                <label data-i18n="booking.children">Number of Children (Below 12):</label>
+                <input type="range" id="children" min="0" max="50" value="0" oninput="updateLabel('childrenLabel', this.value)">
+                <span id="childrenLabel">0</span>
+
+                <label data-i18n="booking.seniors">Number of Senior Citizens (Above 60):</label>
+                <input type="range" id="seniors" min="0" max="50" value="0" oninput="updateLabel('seniorsLabel', this.value)">
+                <span id="seniorsLabel">0</span>
+
+                <!-- Total amount display -->
+                <button type="button" id="payButton" onclick="initiatePaymentHandler()" data-i18n="booking.payButton">Pay ₹0</button>
+            </form>
+        </main>
+    </div>
+
+    <script>
+        const pb = new PocketBase('https://chatbot-db.pockethost.io');
+
+        function updateLabel(labelId, value) {
+            document.getElementById(labelId).textContent = value;
+            calculateTotal(); // Recalculate total on input change
+        }
+
+        function calculateTotal() {
+            let total = 0;
+
+            // Calculate total for selected shows
+            document.querySelectorAll('.checkbox-group input[type="checkbox"]:checked').forEach(show => {
+                total += parseInt(show.value);
+            });
+
+            // Add ticket costs
+            const numAdults = parseInt(document.getElementById('adults').value);
+            const numChildren = parseInt(document.getElementById('children').value);
+            const numSeniors = parseInt(document.getElementById('seniors').value);
+            total += (numAdults * 15) + (numChildren * 5) + (numSeniors * 10);
+
+            // Update total amount display in the pay button
+            document.getElementById('payButton').innerHTML = `Pay ₹${total}`;
+        }
+
+        async function initiatePaymentHandler() {
+            const totalAmountText = document.getElementById('payButton').textContent;
+            const amount = parseFloat(totalAmountText.replace('Pay ₹', '')); // Extract amount from text
+
+            const fullName = document.getElementById('fullName').value.trim();
+            const email = document.getElementById('email').value.trim();
+            const phoneNumber = document.getElementById('phoneNumber').value.trim();
+
+            if (!fullName || !email || !phoneNumber) {
+                alert('Please fill out all required fields.');
+                return;
+            }
+
+            const emailPattern = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+            const phonePattern = /^[0-9]{10}$/;
+
+            if (!emailPattern.test(email)) {
+                alert('Please enter a valid email address.');
+                return;
+            }
+
+            if (!phonePattern.test(phoneNumber)) {
+                alert('Please enter a valid 10-digit phone number.');
+                return;
+            }
+
+            if (amount > 0) {
+                await createRecord(fullName, email, phoneNumber, amount); // Call the function to create record
+                initiatePayment(amount); // Call the payment function with the calculated amount
+            } else {
+                alert('Please select shows or increase the number of attendees to proceed.');
+            }
+        }
+
+        async function createRecord(username, email, phone, amount) {
+            const data = {
+                username,
+                email,
+                phone: parseInt(phone),
+                TheDinosaurEra: document.getElementById('TheDinosaurEra').checked,
+                FossilHunters: document.getElementById('FossilHunters').checked,
+                JourneyToExtinction: document.getElementById('JourneyToExtinction').checked,
+                MarineReptilesOfAncientGujarat: document.getElementById('MarineReptilesOfAncientGujarat').checked,
+                TheRajasaurus: document.getElementById('TheRajasaurus').checked,
+                Adults: parseInt(document.getElementById('adults').value),
+                Children: parseInt(document.getElementById('children').value),
+                SeniorCitizens: parseInt(document.getElementById('seniors').value),
+                Amount: amount
+            };
+
+            try {
+                await pb.collection('ChatbotUsers').create(data);
+                console.log('Record created successfully');
+            } catch (error) {
+                console.error('Error creating record:', error);
+            }
+        }
+
+        function generateInvoice(data) {
+            const { fullName, email, phoneNumber, amount, shows, numAdults, numChildren, numSeniors } = data;
+            let invoiceContent = `Invoice\n\n`;
+            invoiceContent += `Name: ${fullName}\n`;
+            invoiceContent += `Email: ${email}\n`;
+            invoiceContent += `Phone: ${phoneNumber}\n\n`;
+            invoiceContent += `Amount: ₹${amount}\n`;
+            invoiceContent += `Shows:\n${shows.join('\n')}\n\n`;
+            invoiceContent += `Number of Adults: ${numAdults}\n`;
+            invoiceContent += `Number of Children: ${numChildren}\n`;
+            invoiceContent += `Number of Senior Citizens: ${numSeniors}\n`;
+
+            const blob = new Blob([invoiceContent], { type: 'text/plain' });
+            const url = URL.createObjectURL(blob);
+            const a = document.createElement('a');
+            a.href = url;
+            a.download = 'invoice.txt';
+            a.click();
+            URL.revokeObjectURL(url);
+        }
+
+        function initiatePayment(amount) {
+            var options = {
+                key: "rzp_test_LzhSehooOlAxyv", // Replace with your Razorpay key ID
+                amount: amount * 100, // Convert to smallest currency unit
+                currency: "INR",
+                name: "Museum",
+                description: "Ticket Booking",
+                handler: function (response) {
+                    alert('Payment Successful');
+
+                    // Collect booking data
+                    const bookingData = {
+                        fullName: document.getElementById('fullName').value,
+                        email: document.getElementById('email').value,
+                        phoneNumber: document.getElementById('phoneNumber').value,
+                        amount: amount,
+                        shows: [
+                            document.getElementById('TheDinosaurEra').checked ? 'The Dinosaur Era: Rebirth of Giants' : null,
+                            document.getElementById('FossilHunters').checked ? 'Fossil Hunters: Uncovering Gujarat\'s Past' : null,
+                            document.getElementById('JourneyToExtinction').checked ? 'Journey to Extinction: The Cretaceous-Paleogene Event' : null,
+                            document.getElementById('MarineReptilesOfAncientGujarat').checked ? 'Marine Reptiles of Ancient Gujarat' : null,
+                            document.getElementById('TheRajasaurus').checked ? 'The Rajasaurus: Gujarat’s Apex Predator' : null,
+                        ].filter(item => item),
+                        numAdults: parseInt(document.getElementById('adults').value),
+                        numChildren: parseInt(document.getElementById('children').value),
+                        numSeniors: parseInt(document.getElementById('seniors').value)
+                    };
+
+                    generateInvoice(bookingData); // Generate and download invoice
+
+                    window.location.href = 'ticket-confirmed.html'; // Redirect to ticket confirmation page
+                },
+                prefill: {
+                    name: document.getElementById('fullName').value,
+                    email: document.getElementById('email').value,
+                },
+                theme: {
+                    color: "#007bff"
+                }
+            };
+
+            var rzp1 = new Razorpay(options);
+            rzp1.on('payment.failed', function (response) {
+                alert('Payment Failed. Please try again.');
+            });
+
+            rzp1.open();
+        }
+
+        // Add event listeners for real-time total calculation
+        document.addEventListener('DOMContentLoaded', () => {
+            const savedLanguage = localStorage.getItem('language') || 'en';
+            fetch(`Languages/${savedLanguage}.json`)
+                .then(response => response.json())
+                .then(data => {
+                    window.languageData = data;
+                    applyLanguage();
+                });
+
+            // Attach event listeners to calculate total in real-time
+            document.querySelectorAll('.checkbox-group input[type="checkbox"]').forEach(item => {
+                item.addEventListener('change', calculateTotal);
+            });
+
+            document.querySelectorAll('input[type="range"]').forEach(item => {
+                item.addEventListener('input', () => {
+                    updateLabel(`${item.id}Label`, item.value);
+                    calculateTotal();
+                });
+            });
+        });
+
+        function applyLanguage() {
+            document.querySelectorAll('[data-i18n]').forEach(element => {
+                const key = element.getAttribute('data-i18n');
+                element.textContent = window.languageData[key] || key;
+            });
+        }
+    </script>
+</body>
+</html>
